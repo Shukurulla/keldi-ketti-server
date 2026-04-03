@@ -39,6 +39,10 @@ const employeeSchema = new mongoose.Schema(
       enum: ["working", "not_working"],
       default: "not_working",
     },
+    telegramChatId: {
+      type: String,
+      default: null,
+    },
     isActive: {
       type: Boolean,
       default: true,

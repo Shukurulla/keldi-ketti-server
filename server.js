@@ -40,6 +40,10 @@ const start = async () => {
   await connectDB();
   startBackupSchedule();
 
+  // Start Telegram bot
+  const { startBot } = require("./bot");
+  startBot();
+
   app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
   });
