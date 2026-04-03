@@ -112,83 +112,96 @@ const getEmployeeStats = async (req, res) => {
     const dailyDetails = [];
 
     Object.entries(byDate).forEach(([date, dayRecords]) => {
-      const checkIn = dayRecords.find((r) => r.type === "check_in");
-      const checkOut = dayRecords.find((r) => r.type === "check_out");
+      // Bir kunda bir necha sessiya bo'lishi mumkin: check_in → check_out juftliklari
+      const checkIns = dayRecords.filter((r) => r.type === "check_in");
+      const checkOuts = dayRecords.filter((r) => r.type === "check_out");
 
-      if (!checkIn) return;
+      if (checkIns.length === 0) return;
       totalDays++;
 
-      const checkInTime = new Date(checkIn.createdAt);
-      const checkInHour = checkInTime.getHours();
-      const checkInMinute = checkInTime.getMinutes();
-      const checkInTotalMin = checkInHour * 60 + checkInMinute;
+      // Har bir check_in uchun eng yaqin check_out'ni topish
+      checkIns.forEach((checkIn, idx) => {
+        // Bu check_in dan keyingi birinchi check_out
+        const checkOut = checkOuts.find((co) =>
+          new Date(co.createdAt) > new Date(checkIn.createdAt)
+          && (idx === checkIns.length - 1 || new Date(co.createdAt) < new Date(checkIns[idx + 1]?.createdAt || "9999"))
+        );
 
-      let arrivalStatus = "no_schedule";
-      let arrivalDiffMin = 0;
+        const checkInTime = new Date(checkIn.createdAt);
+        const checkInTotalMin = checkInTime.getHours() * 60 + checkInTime.getMinutes();
 
-      if (hasPosition) {
-        const scheduledStartMin = startHour * 60 + startMin;
-        arrivalDiffMin = checkInTotalMin - scheduledStartMin;
+        let arrivalStatus = "no_schedule";
+        let arrivalDiffMin = 0;
 
-        if (arrivalDiffMin > 5) {
-          lateArrivals++;
-          arrivalStatus = "late";
-          totalLateMinutes += arrivalDiffMin;
-        } else if (arrivalDiffMin < -5) {
-          earlyArrivals++;
-          arrivalStatus = "early";
-        } else {
-          onTimeArrivals++;
-          arrivalStatus = "on_time";
-        }
-      }
+        // Faqat birinchi check_in uchun kechikish/erta kelish hisoblanadi
+        if (hasPosition && idx === 0) {
+          const scheduledStartMin = startHour * 60 + startMin;
+          arrivalDiffMin = checkInTotalMin - scheduledStartMin;
 
-      let departureStatus = "no_checkout";
-      let departureDiffMin = 0;
-      let workedMinutes = 0;
-
-      if (checkOut) {
-        const checkOutTime = new Date(checkOut.createdAt);
-        const checkOutHour = checkOutTime.getHours();
-        const checkOutMinute = checkOutTime.getMinutes();
-        const checkOutTotalMin = checkOutHour * 60 + checkOutMinute;
-
-        workedMinutes = checkOutTotalMin - checkInTotalMin;
-        totalWorkedMinutes += workedMinutes;
-
-        if (hasPosition) {
-          const scheduledEndMin = endHour * 60 + endMin;
-          departureDiffMin = checkOutTotalMin - scheduledEndMin;
-
-          if (departureDiffMin < -5) {
-            earlyDepartures++;
-            departureStatus = "early";
-            totalEarlyDepartureMinutes += Math.abs(departureDiffMin);
-          } else if (departureDiffMin > 5) {
-            lateDepartures++;
-            departureStatus = "late";
+          if (arrivalDiffMin > 5) {
+            lateArrivals++;
+            arrivalStatus = "late";
+            totalLateMinutes += arrivalDiffMin;
+          } else if (arrivalDiffMin < -5) {
+            earlyArrivals++;
+            arrivalStatus = "early";
           } else {
-            onTimeDepartures++;
-            departureStatus = "on_time";
+            onTimeArrivals++;
+            arrivalStatus = "on_time";
           }
-        } else {
-          departureStatus = "no_schedule";
+        } else if (hasPosition) {
+          arrivalStatus = "on_time"; // qo'shimcha sessiyalar uchun
         }
-      }
 
-      dailyDetails.push({
-        date,
-        checkInTime: checkIn.createdAt,
-        checkOutTime: checkOut ? checkOut.createdAt : null,
-        checkInPhoto: checkIn.photo,
-        checkOutPhoto: checkOut ? checkOut.photo : null,
-        arrivalStatus,
-        arrivalDiffMin,
-        departureStatus,
-        departureDiffMin,
-        workedMinutes,
-      });
-    });
+        let departureStatus = "no_checkout";
+        let departureDiffMin = 0;
+        let workedMinutes = 0;
+
+        if (checkOut) {
+          const checkOutTime = new Date(checkOut.createdAt);
+          const checkOutTotalMin = checkOutTime.getHours() * 60 + checkOutTime.getMinutes();
+
+          workedMinutes = checkOutTotalMin - checkInTotalMin;
+          totalWorkedMinutes += workedMinutes;
+
+          // Faqat oxirgi check_out uchun erta/kech ketish hisoblanadi
+          const isLastCheckout = checkOuts.indexOf(checkOut) === checkOuts.length - 1;
+          if (hasPosition && isLastCheckout) {
+            const scheduledEndMin = endHour * 60 + endMin;
+            departureDiffMin = checkOutTotalMin - scheduledEndMin;
+
+            if (departureDiffMin < -5) {
+              earlyDepartures++;
+              departureStatus = "early";
+              totalEarlyDepartureMinutes += Math.abs(departureDiffMin);
+            } else if (departureDiffMin > 5) {
+              lateDepartures++;
+              departureStatus = "late";
+            } else {
+              onTimeDepartures++;
+              departureStatus = "on_time";
+            }
+          } else if (hasPosition) {
+            departureStatus = "on_time";
+          } else {
+            departureStatus = "no_schedule";
+          }
+        }
+
+        dailyDetails.push({
+          date,
+          checkInTime: checkIn.createdAt,
+          checkOutTime: checkOut ? checkOut.createdAt : null,
+          checkInPhoto: checkIn.photo,
+          checkOutPhoto: checkOut ? checkOut.photo : null,
+          arrivalStatus,
+          arrivalDiffMin,
+          departureStatus,
+          departureDiffMin,
+          workedMinutes,
+        });
+      }); // checkIns.forEach
+    }); // Object.entries.forEach
 
     const avgWorkedMinutes = totalDays > 0 ? Math.round(totalWorkedMinutes / totalDays) : 0;
 
