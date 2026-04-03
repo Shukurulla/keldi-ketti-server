@@ -12,6 +12,10 @@ const employeeSchema = new mongoose.Schema(
       ref: "Branch",
       required: true,
     },
+    position: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Position",
+    },
     firstName: {
       type: String,
       required: true,

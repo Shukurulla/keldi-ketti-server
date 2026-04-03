@@ -11,6 +11,7 @@ const organizationRoutes = require("./routes/organization");
 const branchRoutes = require("./routes/branch");
 const employeeRoutes = require("./routes/employee");
 const attendanceRoutes = require("./routes/attendance");
+const positionRoutes = require("./routes/position");
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use("/api/organizations", organizationRoutes);
 app.use("/api/branches", branchRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/positions", positionRoutes);
 
 // Health check
 app.get("/api/health", (req, res) => {

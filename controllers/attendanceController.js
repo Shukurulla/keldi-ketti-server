@@ -152,4 +152,91 @@ const getTodaySummary = async (req, res) => {
   }
 };
 
-module.exports = { checkInOut, getMyAttendance, getAttendanceByOrg, getTodaySummary };
+// Get weekly/monthly chart data for dashboard
+const getChartData = async (req, res) => {
+  try {
+    const orgId = req.user.organizationId;
+    const { days = 7 } = req.query;
+    const numDays = parseInt(days);
+
+    const Position = require("../models/Position");
+
+    const dates = [];
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split("T")[0]);
+    }
+
+    const startDate = dates[0];
+    const endDate = dates[dates.length - 1];
+
+    const records = await Attendance.find({
+      organization: orgId,
+      date: { $gte: startDate, $lte: endDate },
+    });
+
+    const employees = await Employee.find({ organization: orgId }).populate("position");
+
+    // Per-day stats
+    const dailyStats = dates.map((date) => {
+      const dayRecords = records.filter((r) => r.date === date);
+      const checkIns = dayRecords.filter((r) => r.type === "check_in");
+      const checkOuts = dayRecords.filter((r) => r.type === "check_out");
+
+      let lateCount = 0;
+      let onTimeCount = 0;
+      let earlyCount = 0;
+
+      checkIns.forEach((ci) => {
+        const emp = employees.find((e) => e._id.toString() === ci.employee.toString());
+        if (!emp?.position) { onTimeCount++; return; }
+        const [sh, sm] = emp.position.workStartTime.split(":").map(Number);
+        const ciTime = new Date(ci.createdAt);
+        const diff = (ciTime.getHours() * 60 + ciTime.getMinutes()) - (sh * 60 + sm);
+        if (diff > 5) lateCount++;
+        else if (diff < -5) earlyCount++;
+        else onTimeCount++;
+      });
+
+      const d = new Date(date + "T00:00:00");
+      const label = d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+
+      return {
+        date,
+        label,
+        checkIns: checkIns.length,
+        checkOuts: checkOuts.length,
+        late: lateCount,
+        onTime: onTimeCount,
+        early: earlyCount,
+      };
+    });
+
+    // Per-branch stats
+    const branches = await Branch.find({ organization: orgId });
+    const branchStats = branches.map((br) => {
+      const brRecords = records.filter(
+        (r) => r.branch.toString() === br._id.toString() && r.type === "check_in"
+      );
+      let late = 0, onTime = 0;
+      brRecords.forEach((ci) => {
+        const emp = employees.find((e) => e._id.toString() === ci.employee.toString());
+        if (!emp?.position) { onTime++; return; }
+        const [sh, sm] = emp.position.workStartTime.split(":").map(Number);
+        const ciTime = new Date(ci.createdAt);
+        const diff = (ciTime.getHours() * 60 + ciTime.getMinutes()) - (sh * 60 + sm);
+        if (diff > 5) late++;
+        else onTime++;
+      });
+      const empCount = employees.filter((e) => e.branch?.toString() === br._id.toString()).length;
+      return { name: br.name, empCount, late, onTime, total: brRecords.length };
+    });
+
+    res.json({ dailyStats, branchStats });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { checkInOut, getMyAttendance, getAttendanceByOrg, getTodaySummary, getChartData };

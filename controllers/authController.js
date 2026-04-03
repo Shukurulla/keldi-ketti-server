@@ -66,7 +66,7 @@ const orgLogin = async (req, res) => {
 const employeeLogin = async (req, res) => {
   try {
     const { phone, password } = req.body;
-    const employee = await Employee.findOne({ phone }).populate("organization branch");
+    const employee = await Employee.findOne({ phone }).populate("organization branch position");
 
     if (!employee) {
       return res.status(401).json({ message: "Телефон немесе құпия сөз қате" });
@@ -99,6 +99,7 @@ const employeeLogin = async (req, res) => {
         status: employee.status,
         organization: employee.organization,
         branch: employee.branch,
+        position: employee.position,
       },
     });
   } catch (error) {
