@@ -114,7 +114,11 @@ const getAttendanceByOrg = async (req, res) => {
     if (employee) filter.employee = employee;
 
     const records = await Attendance.find(filter)
-      .populate("employee", "firstName lastName phone status")
+      .populate({
+        path: "employee",
+        select: "firstName lastName phone status position",
+        populate: { path: "position", select: "workStartTime workEndTime" },
+      })
       .populate("branch", "name")
       .sort({ createdAt: -1 });
 
@@ -137,7 +141,11 @@ const getTodaySummary = async (req, res) => {
     });
 
     const todayRecords = await Attendance.find({ organization: orgId, date: today })
-      .populate("employee", "firstName lastName phone status")
+      .populate({
+        path: "employee",
+        select: "firstName lastName phone status position",
+        populate: { path: "position", select: "workStartTime workEndTime" },
+      })
       .populate("branch", "name")
       .sort({ createdAt: -1 });
 
@@ -239,4 +247,101 @@ const getChartData = async (req, res) => {
   }
 };
 
-module.exports = { checkInOut, getMyAttendance, getAttendanceByOrg, getTodaySummary, getChartData };
+// Get stats for a specific branch (chart + employee list with stats)
+const getBranchStats = async (req, res) => {
+  try {
+    const { branchId } = req.params;
+    const { days = 7 } = req.query;
+    const numDays = parseInt(days);
+
+    const branch = await Branch.findById(branchId);
+    if (!branch) return res.status(404).json({ message: "Филиал не найден" });
+
+    const employees = await Employee.find({ branch: branchId }).populate("position");
+
+    const dates = [];
+    for (let i = numDays - 1; i >= 0; i--) {
+      const d = new Date(); d.setDate(d.getDate() - i);
+      dates.push(d.toISOString().split("T")[0]);
+    }
+    const startDate = dates[0];
+    const endDate = dates[dates.length - 1];
+
+    const records = await Attendance.find({
+      branch: branchId,
+      date: { $gte: startDate, $lte: endDate },
+    });
+
+    // Daily chart
+    const dailyStats = dates.map((date) => {
+      const dayRecs = records.filter((r) => r.date === date);
+      const checkIns = dayRecs.filter((r) => r.type === "check_in");
+      let late = 0, onTime = 0, early = 0;
+      checkIns.forEach((ci) => {
+        const emp = employees.find((e) => e._id.toString() === ci.employee.toString());
+        if (!emp?.position) { onTime++; return; }
+        const [sh, sm] = emp.position.workStartTime.split(":").map(Number);
+        const t = new Date(ci.createdAt);
+        const diff = (t.getHours() * 60 + t.getMinutes()) - (sh * 60 + sm);
+        if (diff > 5) late++; else if (diff < -5) early++; else onTime++;
+      });
+      const d = new Date(date + "T00:00:00");
+      return {
+        date, label: d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" }),
+        checkIns: checkIns.length, late, onTime, early,
+      };
+    });
+
+    // Per-employee stats
+    const employeeStats = employees.map((emp) => {
+      const empRecs = records.filter((r) => r.employee.toString() === emp._id.toString());
+      const byDate = {};
+      empRecs.forEach((r) => { if (!byDate[r.date]) byDate[r.date] = []; byDate[r.date].push(r); });
+
+      let totalDays = 0, late = 0, onTime = 0, early = 0, totalWorked = 0;
+      const hasPos = !!emp.position;
+      const sh = hasPos ? parseInt(emp.position.workStartTime.split(":")[0]) : 0;
+      const sm = hasPos ? parseInt(emp.position.workStartTime.split(":")[1]) : 0;
+
+      Object.values(byDate).forEach((dayRecs) => {
+        const ci = dayRecs.find((r) => r.type === "check_in");
+        const co = dayRecs.find((r) => r.type === "check_out");
+        if (!ci) return;
+        totalDays++;
+        if (hasPos) {
+          const t = new Date(ci.createdAt);
+          const diff = (t.getHours() * 60 + t.getMinutes()) - (sh * 60 + sm);
+          if (diff > 5) late++; else if (diff < -5) early++; else onTime++;
+        }
+        if (ci && co) {
+          const ciT = new Date(ci.createdAt);
+          const coT = new Date(co.createdAt);
+          totalWorked += (coT.getHours() * 60 + coT.getMinutes()) - (ciT.getHours() * 60 + ciT.getMinutes());
+        }
+      });
+
+      return {
+        _id: emp._id, firstName: emp.firstName, lastName: emp.lastName,
+        phone: emp.phone, status: emp.status,
+        position: emp.position ? { name: emp.position.name, workStartTime: emp.position.workStartTime, workEndTime: emp.position.workEndTime } : null,
+        totalDays, late, onTime, early, totalWorked,
+        avgWorked: totalDays > 0 ? Math.round(totalWorked / totalDays) : 0,
+      };
+    });
+
+    const totalLate = dailyStats.reduce((s, d) => s + d.late, 0);
+    const totalOnTime = dailyStats.reduce((s, d) => s + d.onTime, 0);
+    const totalEarly = dailyStats.reduce((s, d) => s + d.early, 0);
+
+    res.json({
+      branch: { _id: branch._id, name: branch.name, radius: branch.radius },
+      totals: { employees: employees.length, working: employees.filter((e) => e.status === "working").length, late: totalLate, onTime: totalOnTime, early: totalEarly },
+      dailyStats,
+      employeeStats,
+    });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+};
+
+module.exports = { checkInOut, getMyAttendance, getAttendanceByOrg, getTodaySummary, getChartData, getBranchStats };

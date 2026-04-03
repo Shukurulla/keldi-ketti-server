@@ -10,8 +10,11 @@ const getBranches = async (req, res) => {
 
     const result = await Promise.all(
       branches.map(async (branch) => {
-        const employeeCount = await Employee.countDocuments({ branch: branch._id });
-        return { ...branch.toObject(), employeeCount };
+        const [employeeCount, workingCount] = await Promise.all([
+          Employee.countDocuments({ branch: branch._id }),
+          Employee.countDocuments({ branch: branch._id, status: "working" }),
+        ]);
+        return { ...branch.toObject(), employeeCount, workingCount };
       })
     );
 
