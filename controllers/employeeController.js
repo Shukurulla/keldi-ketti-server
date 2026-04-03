@@ -34,6 +34,11 @@ const getEmployees = async (req, res) => {
 // Get single employee with position info
 const getEmployee = async (req, res) => {
   try {
+    // Employee can only view their own profile
+    if (req.user.role === "employee" && req.user.id !== req.params.id) {
+      return res.status(403).json({ message: "Нет доступа" });
+    }
+
     const employee = await Employee.findById(req.params.id)
       .populate("organization")
       .populate("branch")
