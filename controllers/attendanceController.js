@@ -96,6 +96,16 @@ const checkInOut = async (req, res) => {
     await employee.save();
 
     res.status(201).json(attendance);
+
+    // Telegram bot orqali xabar yuborish (response dan keyin)
+    try {
+      if (employee.telegramChatId) {
+        const { sendAttendanceNotification } = require("../bot");
+        sendAttendanceNotification(employee.telegramChatId, type, employee);
+      }
+    } catch (e) {
+      console.error("[checkInOut] bot notify error:", e.message);
+    }
   } catch (error) {
     console.error("[checkInOut] EXCEPTION:", error);
     res.status(500).json({ message: error.message });

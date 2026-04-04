@@ -439,4 +439,15 @@ function handleHelp(chatId) {
   );
 }
 
-module.exports = { startBot };
+function sendAttendanceNotification(chatId, type, employee) {
+  if (!bot) return;
+  const typeLabel = type === "check_in" ? "✅ Приход отмечен" : "✅ Уход отмечен";
+  const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  bot.sendMessage(
+    chatId,
+    `${typeLabel} в *${now}*\n\n👤 ${employee.firstName} ${employee.lastName}\n📍 ${employee.branch?.name || "—"}`,
+    { parse_mode: "Markdown", reply_markup: getMainKeyboard() }
+  ).catch((e) => console.error("[bot] sendAttendanceNotification error:", e.message));
+}
+
+module.exports = { startBot, sendAttendanceNotification };
