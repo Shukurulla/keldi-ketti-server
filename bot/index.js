@@ -98,7 +98,7 @@ function startBot() {
 
         if (payload.success) {
           const typeLabel = payload.type === "check_in" ? "✅ Приход отмечен" : "✅ Уход отмечен";
-          const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+          const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: process.env.TIMEZONE || "Asia/Almaty" });
           bot.sendMessage(chatId,
             `${typeLabel} в *${now}*\n\n👤 ${employee.firstName} ${employee.lastName}\n📍 ${employee.branch?.name || "—"}`,
             { parse_mode: "Markdown", reply_markup: getMainKeyboard() }
@@ -197,7 +197,7 @@ async function handleStatus(chatId, employee) {
   let todayInfo = "Сегодня записей нет";
   if (todayRecords.length > 0) {
     todayInfo = todayRecords.map((r) => {
-      const time = new Date(r.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      const time = new Date(r.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: process.env.TIMEZONE || "Asia/Almaty" });
       return `${r.type === "check_in" ? "➡️" : "⬅️"} ${r.type === "check_in" ? "Пришёл" : "Ушёл"} — ${time}`;
     }).join("\n");
   }
@@ -243,10 +243,10 @@ async function handleHistory(chatId, employee) {
   let text = "📅 *История за 7 дней:*\n\n";
   Object.entries(byDate).forEach(([date, dayRecords]) => {
     const d = new Date(date + "T00:00:00");
-    const label = d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" });
+    const label = d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short", timeZone: process.env.TIMEZONE || "Asia/Almaty" });
     text += `📆 *${label}*\n`;
     dayRecords.forEach((r) => {
-      const time = new Date(r.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+      const time = new Date(r.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: process.env.TIMEZONE || "Asia/Almaty" });
       text += `  ${r.type === "check_in" ? "➡️ Пришёл" : "⬅️ Ушёл"} — ${time}\n`;
     });
     text += "\n";
@@ -442,7 +442,7 @@ function handleHelp(chatId) {
 function sendAttendanceNotification(chatId, type, employee) {
   if (!bot) return;
   const typeLabel = type === "check_in" ? "✅ Приход отмечен" : "✅ Уход отмечен";
-  const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: process.env.TIMEZONE || "Asia/Almaty" });
   bot.sendMessage(
     chatId,
     `${typeLabel} в *${now}*\n\n👤 ${employee.firstName} ${employee.lastName}\n📍 ${employee.branch?.name || "—"}`,
