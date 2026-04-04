@@ -23,22 +23,29 @@ const checkInOut = async (req, res) => {
     const longitude = parseFloat(req.body.longitude);
     const employeeId = req.user.id;
 
+    console.log(`[checkInOut] type=${type} lat=${latitude} lng=${longitude} employee=${employeeId} file=${req.file?.filename}`);
+
     if (isNaN(latitude) || isNaN(longitude)) {
+      console.log("[checkInOut] ERROR: lat/lng missing or NaN");
       return res.status(400).json({ message: "Предоставьте доступ к геолокации" });
     }
 
     const employee = await Employee.findById(employeeId).populate("branch");
     if (!employee) {
+      console.log("[checkInOut] ERROR: employee not found", employeeId);
       return res.status(404).json({ message: "Сотрудник не найден" });
     }
 
     const branch = employee.branch;
+    console.log(`[checkInOut] branch=${branch?.name} branchLat=${branch?.latitude} branchLng=${branch?.longitude} radius=${branch?.radius}`);
 
     // Check distance
     const distance = getDistance(latitude, longitude, branch.latitude, branch.longitude);
+    console.log(`[checkInOut] distance=${Math.round(distance)}m radius=${branch.radius}m`);
     if (distance > branch.radius) {
+      console.log(`[checkInOut] ERROR: out of zone (${Math.round(distance)}m > ${branch.radius}m)`);
       return res.status(400).json({
-        message: "Вы не в рабочей зоне",
+        message: `Вы не в рабочей зоне (${Math.round(distance)} м от офиса, макс. ${branch.radius} м)`,
         distance: Math.round(distance),
         maxRadius: branch.radius,
       });
@@ -51,15 +58,20 @@ const checkInOut = async (req, res) => {
       date: today,
     }).sort({ createdAt: -1 });
 
+    console.log(`[checkInOut] lastRecord type=${lastRecord?.type}`);
+
     if (type === "check_in" && lastRecord?.type === "check_in") {
+      console.log("[checkInOut] ERROR: already checked in today");
       return res.status(400).json({ message: "Вы уже отметили приход сегодня" });
     }
 
     if (type === "check_out" && (!lastRecord || lastRecord.type === "check_out")) {
+      console.log("[checkInOut] ERROR: no check_in found");
       return res.status(400).json({ message: "Вы ещё не отмечали приход" });
     }
 
     if (!req.file) {
+      console.log("[checkInOut] ERROR: no photo uploaded");
       return res.status(400).json({ message: "Необходимо сделать селфи" });
     }
 
@@ -74,12 +86,15 @@ const checkInOut = async (req, res) => {
       date: today,
     });
 
+    console.log(`[checkInOut] SUCCESS: attendance=${attendance._id}`);
+
     // Update employee status
     employee.status = type === "check_in" ? "working" : "not_working";
     await employee.save();
 
     res.status(201).json(attendance);
   } catch (error) {
+    console.error("[checkInOut] EXCEPTION:", error);
     res.status(500).json({ message: error.message });
   }
 };
