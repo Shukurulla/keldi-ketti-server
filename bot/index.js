@@ -50,8 +50,15 @@ function startBot() {
     );
   });
 
-  // Получение контакта — авторизация
+  // Получение контакта — авторизация (только через кнопку)
   bot.on("contact", async (msg) => {
+    // Принимаем только если контакт принадлежит самому пользователю
+    if (msg.contact.user_id && msg.contact.user_id !== msg.from.id) {
+      return bot.sendMessage(msg.chat.id,
+        "❌ Пожалуйста, отправьте *свой* номер телефона через кнопку.",
+        { parse_mode: "Markdown" }
+      );
+    }
     const chatId = msg.chat.id;
     let phone = msg.contact.phone_number;
 
@@ -76,14 +83,58 @@ function startBot() {
     );
   });
 
-  // Обработка кнопок
+  // Обработка всех входящих сообщений
   bot.on("message", async (msg) => {
-    if (msg.contact) return; // обработано выше
+    if (msg.contact) return; // обработано в отдельном хендлере выше
+
     const chatId = msg.chat.id;
+
+    // WebApp data — результат отметки
+    if (msg.web_app_data) {
+      try {
+        const payload = JSON.parse(msg.web_app_data.data);
+        const employee = await Employee.findOne({ telegramChatId: String(chatId) }).populate("position branch");
+        if (!employee) return;
+
+        if (payload.success) {
+          const typeLabel = payload.type === "check_in" ? "✅ Приход отмечен" : "✅ Уход отмечен";
+          const now = new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+          bot.sendMessage(chatId,
+            `${typeLabel} в *${now}*\n\n👤 ${employee.firstName} ${employee.lastName}\n📍 ${employee.branch?.name || "—"}`,
+            { parse_mode: "Markdown", reply_markup: getMainKeyboard() }
+          );
+        } else if (payload.error) {
+          bot.sendMessage(chatId,
+            `❌ Ошибка: ${payload.error}`,
+            { parse_mode: "Markdown", reply_markup: getMainKeyboard() }
+          );
+        }
+      } catch (e) {
+        console.error("[bot] web_app_data parse error:", e);
+      }
+      return;
+    }
+
     const text = msg.text;
+    if (!text) return;
 
     const employee = await Employee.findOne({ telegramChatId: String(chatId) }).populate("position branch organization");
+
     if (!employee && text !== "/start") {
+      const looksLikePhone = /^[\+\d\s\-\(\)]{7,}$/.test(text.trim());
+      if (looksLikePhone) {
+        return bot.sendMessage(chatId,
+          "📱 Для авторизации нажмите кнопку *«Отправить номер телефона»* ниже.\n\nВводить номер вручную нельзя — это требование безопасности.",
+          {
+            parse_mode: "Markdown",
+            reply_markup: {
+              keyboard: [[{ text: "📱 Отправить номер телефона", request_contact: true }]],
+              resize_keyboard: true,
+              one_time_keyboard: true,
+            },
+          }
+        );
+      }
       return bot.sendMessage(chatId, "⚠️ Сначала авторизуйтесь: /start");
     }
     if (!employee) return;
@@ -360,7 +411,7 @@ function handleCheckWebView(chatId, employee) {
     { expiresIn: "1d" }
   );
 
-  const url = `${webAppUrl}/check?token=${token}`;
+  const url = `${webAppUrl}/?token=${encodeURIComponent(token)}`;
 
   bot.sendMessage(chatId,
     "✅ Нажмите кнопку ниже, чтобы отметить приход/уход:",

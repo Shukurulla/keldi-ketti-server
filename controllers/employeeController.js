@@ -20,6 +20,10 @@ const getEmployees = async (req, res) => {
       filter.position = req.query.position;
     }
 
+    if (req.query.status) {
+      filter.status = req.query.status;
+    }
+
     const employees = await Employee.find(filter)
       .populate("branch", "name")
       .populate("position", "name workStartTime workEndTime")
