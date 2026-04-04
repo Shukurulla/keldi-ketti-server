@@ -66,8 +66,11 @@ const checkInOut = async (req, res) => {
     }
 
     if (type === "check_out" && (!lastRecord || lastRecord.type === "check_out")) {
-      console.log("[checkInOut] ERROR: no check_in found");
-      return res.status(400).json({ message: "Вы ещё не отмечали приход" });
+      console.log("[checkInOut] ERROR: no check_in found — resetting employee status");
+      // Status DB da out of sync — tuzatib qo'yamiz
+      employee.status = "not_working";
+      await employee.save();
+      return res.status(400).json({ message: "Вы ещё не отмечали приход", resetStatus: true });
     }
 
     if (!req.file) {
