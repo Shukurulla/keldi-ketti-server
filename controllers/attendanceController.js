@@ -98,10 +98,14 @@ const checkInOut = async (req, res) => {
     res.status(201).json(attendance);
 
     // Telegram bot orqali xabar yuborish (response dan keyin)
+    console.log(`[checkInOut] telegramChatId=${employee.telegramChatId}`);
     try {
       if (employee.telegramChatId) {
         const { sendAttendanceNotification } = require("../bot");
         sendAttendanceNotification(employee.telegramChatId, type, employee);
+        console.log(`[checkInOut] bot notification sent to ${employee.telegramChatId}`);
+      } else {
+        console.log("[checkInOut] no telegramChatId, skip notification");
       }
     } catch (e) {
       console.error("[checkInOut] bot notify error:", e.message);
